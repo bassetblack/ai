@@ -32,14 +32,14 @@ origins = [
     "http://127.0.0.1:5173",  # Alternative frontend URL
 ]
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Use your specific origins
+    allow_origins=origins,  # Only allow these origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 conversation_history = []
 
