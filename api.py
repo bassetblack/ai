@@ -84,6 +84,9 @@ def process_file(contents: bytes, content_type: str) -> str:
         logger.error(f"Error processing file: {e}")
         return f"Error extracting text: {e}"
 
+@app.get("/test")
+def test_endpoint():
+    return {"message": "CORS should be applied!"}
 @app.post("/chat")
 async def chat_endpoint(chat_request: dict):
     try:
