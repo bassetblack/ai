@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat Interface with Diagram Mode</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #74ABE2, #5563DE);
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    #chat-container {
+      width: 600px;
+      max-width: 90%;
+      background-color: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #chat-box {
+      flex: 1;
+      padding: 15px;
+      background-color: #f9f9f9;
+      overflow-y: auto;
+      max-height: 400px;
+    }
+    /* Base .message style */
+    .message {
+      margin: 10px 0;
+      padding: 14px 20px;
+      border-radius: 10px;
+      max-width: 80%;
+      word-wrap: break-word;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    /* user (left, light green) */
+    .user {
+      align-self: flex-start;
+      background-color: #DCF8C6;
+      color: #333;
+    }
+    /* bot (right, lighter green) */
+    .bot {
+      align-self: flex-end;
+      background-color: #E1FFC7;
+      color: #333;
+    }
+    #input-container {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      background-color: #fff;
+      border-top: 1px solid #ddd;
+    }
+    #user-input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      outline: none;
+      font-size: 16px;
+    }
+    #file-input {
+      display: none;
+    }
+    #file-label {
+      cursor: pointer;
+      padding: 0 10px;
+      font-size: 26px;
+      color: #5563DE;
+    }
+    #send-btn {
+      padding: 10px 20px;
+      margin-left: 5px;
+      border: none;
+      border-radius: 4px;
+      background-color: #5563DE;
+      color: #fff;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      font-size: 16px;
+    }
+    #send-btn:hover {
+      background-color: #3a46b5;
+    }
+    #toggle-mode-btn {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      background-color: #ff9800;
+      color: #fff;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      font-size: 16px;
+    }
+    #toggle-mode-btn:hover {
+      background-color: #e68900;
+    }
+    .download-link {
+      color: #007bff;
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    /* Code block styling */
+    pre.code-snippet {
+      background-color: #2d2d2d;
+      color: #f8f8f2;
+      padding: 10px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      margin: 10px 0;
+    }
+    /* Inline code styling */
+    code {
+      background-color: #ffffff00;
+      color: #ffffff;
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <button id="toggle-mode-btn">Toggle Mode (Diagram)</button>
+  <div id="chat-container">
+    <div id="chat-box"></div>
+    <div id="input-container">
+      <input type="text" id="user-input" placeholder="Type your message or instruction..." />
+      <label for="file-input" id="file-label" style="display: inline;">📎</label>
+      <input type="file" id="file-input" />
+      <button id="send-btn">Submit Message</button>
+    </div>
+  </div>
+  
+  <script>
+    // Helper to escape HTML
+    function escapeHTML(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // parseMarkdown: Everything between triple backticks => code, everything else => normal text
+    function parseMarkdown(text) {
+      try {
+        let codeBlocks = [];
+        // 1) If triple-backtick is used
+        if (text.includes("```")) {
+          let parts = text.split("```");
+          let result = "";
+          for (let i = 0; i < parts.length; i++) {
+            if (i % 2 === 0) {
+              // Normal text portion
+              let processed = parts[i]
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br>');
+              result += processed;
+            } else {
+              // Code portion (everything between triple backticks)
+              let codeContent = parts[i].trim();
+              codeBlocks.push(codeContent);
+              result += `@@CODEBLOCK${codeBlocks.length - 1}@@`;
+            }
+          }
+          text = result;
+        } else {
+          // No triple backticks => parse bold, italic, newlines
+          text = text
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
+        }
+        
+        // 2) Single backticks => inline code (optional)
+        if (text.includes("`")) {
+          let inlineCodes = [];
+          let parts = text.split("`");
+          let result = "";
+          for (let i = 0; i < parts.length; i++) {
+            if (i % 2 === 0) {
+              result += parts[i];
+            } else {
+              inlineCodes.push(parts[i]);
+              result += `@@INLINECODE${inlineCodes.length - 1}@@`;
+            }
+          }
+          text = result;
+          for (let i = 0; i < inlineCodes.length; i++) {
+            let codeHtml = '<code>' + escapeHTML(inlineCodes[i]) + '</code>';
+            text = text.replace(`@@INLINECODE${i}@@`, codeHtml);
+          }
+        }
+        
+        // 3) Reinsert code blocks
+        for (let i = 0; i < codeBlocks.length; i++) {
+          let codeHtml = '<pre class="code-snippet"><code>' + escapeHTML(codeBlocks[i]) + '</code></pre>';
+          text = text.replace(`@@CODEBLOCK${i}@@`, codeHtml);
+        }
+        return text;
+      } catch (e) {
+        console.error("Markdown parse error:", e);
+        return text;
+      }
+    }
+
+    // DOM references
+    const chatBox = document.getElementById('chat-box');
+    const userInput = document.getElementById('user-input');
+    const fileInput = document.getElementById('file-input');
+    const sendBtn = document.getElementById('send-btn');
+    const toggleModeBtn = document.getElementById('toggle-mode-btn');
+
+    let conversationHistory = [];
+    let diagramMode = false;
+
+    let conversationID = localStorage.getItem("conversationID") || generateConversationID();
+    function generateConversationID() {
+      const id = 'conv-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+      localStorage.setItem("conversationID", id);
+      return id;
+    }
+
+    function saveConversation() {
+      localStorage.setItem("chatHistory1", JSON.stringify(conversationHistory));
+    }
+
+    function loadConversation() {
+      const savedHistory = localStorage.getItem("chatHistory1");
+      if (savedHistory) {
+        conversationHistory = JSON.parse(savedHistory);
+        conversationHistory.forEach(msg => appendMessage(msg.text, msg.sender));
+      }
+    }
+
+    function appendMessage(text, sender) {
+      text = parseMarkdown(text);
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'message ' + sender;
+      messageDiv.innerHTML = text;
+      chatBox.appendChild(messageDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function addMessage(text, sender) {
+      conversationHistory.push({ sender, text });
+      appendMessage(text, sender);
+      saveConversation();
+    }
+
+    function updateModeUI() {
+      toggleModeBtn.textContent = diagramMode
+        ? "Toggle Mode (Chat)"
+        : "Toggle Mode (Diagram)";
+    }
+    updateModeUI();
+    loadConversation();
+
+    async function sendMessage() {
+      const text = userInput.value.trim();
+      const file = fileInput.files[0];
+
+      // If user typed text, show it as .user
+      if (text) {
+        addMessage(text, "user");
+      }
+
+      if (diagramMode) {
+        // Diagram mode
+        if (!text) return;
+        try {
+          const formData = new FormData();
+          formData.append('instruction', text);
+          const response = await fetch('http://localhost:8000/diagram_generate', {
+            method: 'POST',
+            body: formData
+          });
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const linkHTML = `<a href="${url}" download="diagram.png"><img src="${url}" style="max-width:100%; border:1px solid #ccc;"/></a>`;
+          addMessage("This is the diagram you asked for. Click the image to download it:<br/>" + linkHTML, "bot");
+        } catch (error) {
+          addMessage("Error: Unable to generate diagram.", "bot");
+          console.error("Error:", error);
+        }
+      } else {
+        // Normal chat mode
+        if (file) {
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            if (text) formData.append('instruction', text);
+
+            const response = await fetch('http://localhost:8000/upload', {
+              method: 'POST',
+              body: formData
+            });
+            const data = await response.json();
+
+            // Display file text as a bot message
+            const previewHTML = `File: ${file.name}\n${data.result}`;
+            addMessage(previewHTML, "bot");
+
+            fileInput.value = "";
+          } catch (error) {
+            addMessage("Error: Unable to process file.", "bot");
+            console.error("Error:", error);
+          }
+        } else {
+          if (!text) return;
+          try {
+            const payload = {
+              conversation_id: conversationID,
+              question: text
+            };
+            const response = await fetch('http://localhost:8000/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            addMessage(data.answer, "bot");
+          } catch (error) {
+            addMessage("Error: Unable to fetch response.", "bot");
+            console.error("Error:", error);
+          }
+        }
+      }
+      userInput.value = "";
+    }
+
+    toggleModeBtn.addEventListener('click', () => {
+      diagramMode = !diagramMode;
+      updateModeUI();
+    });
+
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', event => {
+      if (event.key === 'Enter') {
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
